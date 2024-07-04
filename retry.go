@@ -1,6 +1,9 @@
 package main
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // retry will retry a given function n times with a wait of a given duration between each retry attempt.
 func retry(retryCount int, waitTime time.Duration, fn func() error) error {
@@ -13,12 +16,8 @@ func retry(retryCount int, waitTime time.Duration, fn func() error) error {
 // retryWithReturn will retry a given function n times with a wait of a given duration between each
 // retry attempt. retryWithReturn is intended for functions where a return values is needed.
 func retryWithReturn[T any](retryCount int, waitTime time.Duration, fn func() (T, error)) (T, error) {
-	var (
-		err error
-		t   T
-	)
 	for i := 0; i < retryCount; i++ {
-		t, err = fn()
+		t, err := fn()
 		if err != nil {
 			if i >= retryCount {
 				return t, err
@@ -28,5 +27,5 @@ func retryWithReturn[T any](retryCount int, waitTime time.Duration, fn func() (T
 		}
 		return t, nil
 	}
-	return t, err
+	return *new(T), errors.New("default return reached in retryWithReturn")
 }
