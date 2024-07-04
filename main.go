@@ -24,7 +24,7 @@ func main() {
 	}
 }
 
-// test obj and funcs
+// demo obj and funcs
 
 type Stuff struct {
 	words string
