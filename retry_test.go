@@ -102,6 +102,15 @@ func TestRetryWithReturn(t *testing.T) {
 			expectVal: 0,
 			expectErr: true,
 		},
+		"Check last return error not reached": {
+			retryCount: 0,
+			waitTime:   100 * time.Millisecond,
+			fn: func() (int, error) {
+				return 0, errors.New("error")
+			},
+			expectVal: 0,
+			expectErr: true,
+		},
 	}
 
 	for name, tt := range tests {
@@ -109,6 +118,9 @@ func TestRetryWithReturn(t *testing.T) {
 			val, err := retryWithReturn(tt.retryCount, tt.waitTime, tt.fn)
 			if tt.expectErr {
 				assert.Error(t, err)
+				if tt.retryCount == 0 {
+					assert.Equal(t, "default return reached in retryWithReturn", err.Error())
+				}
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectVal, val)
