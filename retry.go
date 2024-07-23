@@ -63,10 +63,6 @@ func RetryResult[T any](ctx context.Context, maxDuration time.Duration, retryFun
 		}
 	}()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return returnData, err
-		}
-	}
+	<-ctx.Done()
+	return returnData, err
 }
