@@ -1,22 +1,24 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"log"
 	"time"
 )
 
 func main() {
+	ctx := context.Background()
 	words := "these are words"
 
-	stuff, err := retryWithReturn(5, 5*time.Second, func() (Stuff, error) {
+	stuff, err := RetryResult(ctx, 5*time.Second, func() (Stuff, error) {
 		return newStuff(words)
 	})
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	err = retry(5, 5*time.Second, func() error {
+	err = Retry(ctx, 5*time.Second, func() error {
 		return stuff.doThingsWithStuff()
 	})
 	if err != nil {

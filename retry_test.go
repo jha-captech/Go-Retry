@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -8,50 +9,52 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type retryFuncMock struct {
+	callCount     int
+	shouldSucceed bool
+}
+
+func (r *retryFuncMock) call() error {
+	r.callCount++
+	if r.shouldSucceed && r.callCount > 3 {
+		return nil
+	}
+	return errors.New("mock error")
+}
+
+func (r *retryFuncMock) callWithResult() (string, error) {
+	r.callCount++
+	if r.shouldSucceed && r.callCount > 3 {
+		return "success", nil
+	}
+	return "", errors.New("mock error")
+}
+
 func TestRetry(t *testing.T) {
-	tests := map[string]struct {
-		retryCount int
-		waitTime   time.Duration
-		fn         func() error
-		expectErr  bool
+	testCases := map[string]struct {
+		maxDuration   time.Duration
+		shouldSucceed bool
+		expectError   bool
 	}{
-		"Success on first attempt": {
-			retryCount: 3,
-			waitTime:   100 * time.Millisecond,
-			fn: func() error {
-				return nil
-			},
-			expectErr: false,
+		"Success after retries": {
+			maxDuration:   5 * time.Second,
+			shouldSucceed: true,
+			expectError:   false,
 		},
-		"Success on second attempt": {
-			retryCount: 3,
-			waitTime:   100 * time.Millisecond,
-			fn: func() func() error {
-				attempts := 0
-				return func() error {
-					attempts++
-					if attempts < 2 {
-						return errors.New("error")
-					}
-					return nil
-				}
-			}(),
-			expectErr: false,
-		},
-		"All attempts fail": {
-			retryCount: 3,
-			waitTime:   100 * time.Millisecond,
-			fn: func() error {
-				return errors.New("error")
-			},
-			expectErr: true,
+		"Failure after max duration": {
+			maxDuration:   1 * time.Second,
+			shouldSucceed: false,
+			expectError:   true,
 		},
 	}
 
-	for name, tt := range tests {
+	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			err := retry(tt.retryCount, tt.waitTime, tt.fn)
-			if tt.expectErr {
+			mockFunc := &retryFuncMock{shouldSucceed: tc.shouldSucceed}
+
+			err := Retry(context.Background(), tc.maxDuration, mockFunc.call)
+
+			if tc.expectError {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
@@ -60,70 +63,39 @@ func TestRetry(t *testing.T) {
 	}
 }
 
-func TestRetryWithReturn(t *testing.T) {
-	tests := map[string]struct {
-		retryCount int
-		waitTime   time.Duration
-		fn         func() (int, error)
-		expectVal  int
-		expectErr  bool
+func TestRetryResult(t *testing.T) {
+	testCases := map[string]struct {
+		maxDuration   time.Duration
+		shouldSucceed bool
+		expectError   bool
+		expectResult  string
 	}{
-		"Success on first attempt": {
-			retryCount: 3,
-			waitTime:   100 * time.Millisecond,
-			fn: func() (int, error) {
-				return 42, nil
-			},
-			expectVal: 42,
-			expectErr: false,
+		"Success after retries": {
+			maxDuration:   5 * time.Second,
+			shouldSucceed: true,
+			expectError:   false,
+			expectResult:  "success",
 		},
-		"Success on second attempt": {
-			retryCount: 3,
-			waitTime:   100 * time.Millisecond,
-			fn: func() func() (int, error) {
-				attempts := 0
-				return func() (int, error) {
-					attempts++
-					if attempts < 2 {
-						return 0, errors.New("error")
-					}
-					return 42, nil
-				}
-			}(),
-			expectVal: 42,
-			expectErr: false,
-		},
-		"All attempts fail": {
-			retryCount: 3,
-			waitTime:   100 * time.Millisecond,
-			fn: func() (int, error) {
-				return 0, errors.New("error")
-			},
-			expectVal: 0,
-			expectErr: true,
-		},
-		"Check last return error not reached": {
-			retryCount: 0,
-			waitTime:   100 * time.Millisecond,
-			fn: func() (int, error) {
-				return 0, errors.New("error")
-			},
-			expectVal: 0,
-			expectErr: true,
+		"Failure after max duration": {
+			maxDuration:   1 * time.Second,
+			shouldSucceed: false,
+			expectError:   true,
+			expectResult:  "",
 		},
 	}
 
-	for name, tt := range tests {
+	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			val, err := retryWithReturn(tt.retryCount, tt.waitTime, tt.fn)
-			if tt.expectErr {
+			mockFunc := &retryFuncMock{shouldSucceed: tc.shouldSucceed}
+
+			result, err := RetryResult(context.Background(), tc.maxDuration, mockFunc.callWithResult)
+
+			if tc.expectError {
 				assert.Error(t, err)
-				if tt.retryCount == 0 {
-					assert.Equal(t, "default return reached in retryWithReturn", err.Error())
-				}
+				assert.Empty(t, result)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tt.expectVal, val)
+				assert.Equal(t, tc.expectResult, result)
 			}
 		})
 	}

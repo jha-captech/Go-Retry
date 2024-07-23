@@ -1,34 +1,74 @@
 package main
 
 import (
-	"errors"
+	"context"
+	"fmt"
+	"math"
+	"math/rand"
 	"time"
 )
 
-// retry will retry a given function n times with a wait of a given duration between each retry attempt.
-func retry(retryCount int, waitTime time.Duration, fn func() error) error {
-	_, err := retryWithReturn(retryCount, waitTime, func() (any, error) {
-		return nil, fn()
+// Retry repeatedly calls the provided retryFunc until it succeeds or the maxDuration is exceeded.
+// It uses an exponential backoff strategy for retries.
+//
+// Parameters:
+// - ctx: The context to control the lifetime of the retry loop.
+// - maxDuration: The maximum duration to keep retrying.
+// - retryFunc: The function to call repeatedly until it succeeds.
+//
+// Returns:
+// - error: The last error returned by retryFunc, or nil if retryFunc succeeds.
+func Retry(ctx context.Context, maxDuration time.Duration, retryFunc func() error) error {
+	_, err := RetryResult(ctx, maxDuration, func() (any, error) {
+		return nil, retryFunc()
 	})
 	return err
 }
 
-// retryWithReturn will retry a given function n times with a wait of a given duration between each
-// retry attempt. retryWithReturn is intended for functions where a return values is needed.
-func retryWithReturn[T any](retryCount int, waitTime time.Duration, fn func() (T, error)) (T, error) {
-	if retryCount < 1 {
-		return *new(T), errors.New("retryCount of less than 1 is not permitted")
-	}
-	for i := 0; i < retryCount; i++ {
-		t, err := fn()
-		if err != nil {
-			if i == retryCount-1 {
-				return t, err
+// RetryResult repeatedly calls the provided retryFunc until it succeeds or the maxDuration is exceeded.
+// It uses an exponential backoff strategy for retries.
+//
+// Parameters:
+// - ctx: The context to control the lifetime of the retry loop.
+// - maxDuration: The maximum duration to keep retrying.
+// - retryFunc: The function to call repeatedly until it succeeds. It should return a result and an error.
+//
+// Returns:
+// - T: The result returned by a successful call to retryFunc.
+// - error: The last error returned by retryFunc, or nil if retryFunc succeeds.
+func RetryResult[T any](ctx context.Context, maxDuration time.Duration, retryFunc func() (T, error)) (T, error) {
+	var (
+		returnData T
+		err        error
+	)
+	const maxBackoffMilliseconds = 2_000.0
+
+	ctx, cancelFunc := context.WithTimeout(ctx, maxDuration)
+	defer cancelFunc()
+
+	go func() {
+		counter := 1.0
+		for {
+			counter++
+			returnData, err = retryFunc()
+			if err != nil {
+				waitMilliseconds := math.Min(
+					math.Pow(counter, 2)+float64(rand.Intn(10)),
+					maxBackoffMilliseconds,
+				)
+				fmt.Printf("backoff in milliseconds: %2f\n", waitMilliseconds)
+				time.Sleep(time.Duration(waitMilliseconds) * time.Millisecond)
+				continue
 			}
-			time.Sleep(waitTime)
-			continue
+			cancelFunc()
+			return
 		}
-		return t, nil
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return returnData, err
+		}
 	}
-	return *new(T), errors.New("default return reached in retryWithReturn")
 }
