@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"math/rand"
 	"time"
@@ -56,7 +55,6 @@ func RetryResult[T any](ctx context.Context, maxDuration time.Duration, retryFun
 					math.Pow(counter, 2)+float64(rand.Intn(10)),
 					maxBackoffMilliseconds,
 				)
-				fmt.Printf("backoff in milliseconds: %2f\n", waitMilliseconds)
 				time.Sleep(time.Duration(waitMilliseconds) * time.Millisecond)
 				continue
 			}
